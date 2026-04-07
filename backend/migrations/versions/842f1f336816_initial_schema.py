@@ -49,7 +49,7 @@ def upgrade() -> None:
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('municipality', sa.String(), nullable=False),
-    sa.Column('tank_capacity_l', sa.Float(), nullable=False),
+    sa.Column('tank_capacity', sa.Float(), nullable=False),
     sa.Column('tank_current_pct', sa.Float(), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')

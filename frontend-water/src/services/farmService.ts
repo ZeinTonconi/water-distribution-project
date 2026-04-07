@@ -21,7 +21,7 @@ export const createFarm = async (data: {
 }
 
 export const updateFarm = async (farmId: number, data: {
-  tank_capacity_l?: number
+  tank_capacity?: number
   tank_current_pct?: number
   name?: string
 }): Promise<Farm> => {

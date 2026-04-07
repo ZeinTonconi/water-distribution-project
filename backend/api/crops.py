@@ -6,8 +6,7 @@ from models.user import User
 from models.farm import Farm
 from models.crop import Crop
 from models.farm_crop import FarmCrop
-from crops.models.farmCropCreate import FarmCropCreate
-from crops.models.farmCropUpdate import FarmCropUpdate
+from schemas.farm_crop import FarmCropCreate, FarmCropUpdate
 
 router = APIRouter(prefix="/farms", tags=["farms"]) 
 

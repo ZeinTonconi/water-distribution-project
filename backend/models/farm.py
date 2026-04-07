@@ -9,7 +9,7 @@ class Farm(Base):
     user_id          = Column(Integer, ForeignKey("users.id"), nullable=False)
     name             = Column(String, nullable=False)
     municipality_id  = Column(Integer, ForeignKey("municipalities.id"), nullable=False)
-    tank_capacity_l  = Column(Float, nullable=False)
+    tank_capacity  = Column(Float, nullable=False)
 
     user         = relationship("User", back_populates="farms")
     municipality = relationship("Municipality")

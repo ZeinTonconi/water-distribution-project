@@ -1,4 +1,5 @@
 import axios from 'axios';
+import {toSnake} from '../utils/caseConverter'
 
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -9,6 +10,12 @@ apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) 
     config.headers.Authorization = `Bearer ${token}`;
+
+  if (config.data) {
+    config.data = toSnake(config.data);
+  }
+
+
   return config;
 });
 

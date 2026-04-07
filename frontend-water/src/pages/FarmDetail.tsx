@@ -32,10 +32,11 @@ export default function FarmDetail() {
   const [addOpen, setAddOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [addForm, setAddForm] = useState({
-    crop_id: '',
-    area_m2: '',
-    planting_date: '',
-    current_stage: 'mid',
+    cropId: '',
+    area: '',
+    plantingDate: '',
+    currentStage: 'mid',
+    simulationDate: ''
   })
 
   // Priority + simulate dialog
@@ -57,21 +58,21 @@ export default function FarmDetail() {
 
   useEffect(() => { loadFarm() }, [loadFarm])
 
-  const selectedCrop = crops.find(c => c.id === Number(addForm.crop_id))
+  const selectedCrop = crops.find(c => c.id === Number(addForm.cropId))
 
   const handleAddCrop = async () => {
-    if (!addForm.crop_id || !addForm.area_m2) return
+    if (!addForm.cropId || !addForm.area) return
     setAdding(true)
     try {
       await addCrop(id, {
-        crop_id: Number(addForm.crop_id),
-        area_m2: Number(addForm.area_m2),
-        planting_date: selectedCrop?.isPerennial ? null : addForm.planting_date || null,
-        current_stage: selectedCrop?.isPerennial ? addForm.current_stage : null,
+        crop_id: Number(addForm.cropId),
+        area_m2: Number(addForm.area),
+        planting_date: selectedCrop?.isPerennial ? null : addForm.plantingDate || null,
+        current_stage: selectedCrop?.isPerennial ? addForm.currentStage : null,
       })
       await loadFarm()
       setAddOpen(false)
-      setAddForm({ crop_id: '', area_m2: '', planting_date: '', current_stage: 'mid' })
+      setAddForm({ cropId: '', area: '', plantingDate: '', currentStage: 'mid', simulationDate: '' })
     } catch (err: any) {
       setError(err.message || 'Error al agregar cultivo')
     } finally {
@@ -88,6 +89,7 @@ export default function FarmDetail() {
     }
   }
 
+  const [startDate, setStartDate] = useState("")
   const handleSimulate = async () => {
     setSimulating(true)
     try {
@@ -95,7 +97,7 @@ export default function FarmDetail() {
       const result = await simulateFarm(id, {
         priority: priority as 'sensitive' | 'equal' | 'economic',
         n_weeks: 16,
-        start_date: new Date().toISOString().split('T')[0],
+        start_date: new Date(startDate).toISOString().split('T')[0],
       })
       // Store result in sessionStorage to pass to Results page
       sessionStorage.setItem('simulationResult', JSON.stringify(result))
@@ -127,6 +129,13 @@ export default function FarmDetail() {
 
   const activeCrops = farm.crops.filter(fc => !fc.isHarvested)
 
+  const toSpanish = (stage: string) => {
+    if(stage === "initial") return "de brote"
+    if(stage === "mid") return "de crecimiento"
+    if(stage === "end") return "de maduracion" 
+  }
+
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
       {/* Header */}
@@ -138,8 +147,7 @@ export default function FarmDetail() {
           <Typography variant="h6" fontWeight={700}>{farm.name}</Typography>
         </Box>
         <Typography variant="caption" sx={{ pl: 5 }}>
-          💧 Tanque: {Math.round(farm.tankCapacity * farm.tank_current_pct)}L disponibles
-          de {farm.tank_capacity_l}L
+          💧 Tanque: {farm.tankCapacity}L
         </Typography>
       </Box>
 
@@ -178,18 +186,18 @@ export default function FarmDetail() {
         ) : (
           <Box display="flex" flexDirection="column" gap={1.5} mb={3}>
             {activeCrops.map(fc => {
-              const cropInfo = crops.find(c => c.id === fc.crop_id)
-              const tol = toleranceLabel(cropInfo?.drought_tolerance ?? 3)
+              const cropInfo = crops.find(c => c.id === fc.cropId)
+              const tol = toleranceLabel(cropInfo?.droughtTolerance ?? 3)
               return (
                 <Card key={fc.id} elevation={1}>
                   <CardContent sx={{ py: '12px !important' }}>
                     <Box display="flex" alignItems="flex-start" justifyContent="space-between">
                       <Box flex={1}>
-                        <Typography fontWeight={600}>{fc.crop_name}</Typography>
+                        <Typography fontWeight={600}>{fc.cropName}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          {fc.area_m2} m²
-                          {fc.planting_date && ` · Plantado ${new Date(fc.planting_date).toLocaleDateString('es-BO', { day: 'numeric', month: 'short' })}`}
-                          {fc.current_stage && ` · Etapa ${fc.current_stage}`}
+                          {fc.area} m²
+                          {fc.plantingDate && ` · Plantado ${new Date(fc.plantingDate).toLocaleDateString('es-BO', { day: 'numeric', month: 'short' })}`}
+                          {fc.currentStage && ` · Etapa ${toSpanish(fc.currentStage)}`}
                         </Typography>
                         <Box mt={0.75}>
                           <Chip
@@ -198,7 +206,7 @@ export default function FarmDetail() {
                             size="small"
                             sx={{ height: 20, fontSize: '0.7rem' }}
                           />
-                          {fc.is_perennial && (
+                          {fc.isPerennial && (
                             <Chip
                               label="Perenne"
                               size="small"
@@ -257,13 +265,13 @@ export default function FarmDetail() {
             <TextField
               select
               label="Cultivo"
-              value={addForm.crop_id}
-              onChange={e => setAddForm(f => ({ ...f, crop_id: e.target.value }))}
+              value={addForm.cropId}
+              onChange={e => setAddForm(f => ({ ...f, cropId: e.target.value }))}
               fullWidth
             >
               {crops.map(c => (
                 <MenuItem key={c.id} value={c.id}>
-                  {c.name} {c.is_perennial ? '(perenne)' : ''}
+                  {c.name} {c.isPerennial ? '(perenne)' : ''}
                 </MenuItem>
               ))}
             </TextField>
@@ -272,18 +280,18 @@ export default function FarmDetail() {
               label="Área (m²)"
               type="number"
               placeholder="30"
-              value={addForm.area_m2}
-              onChange={e => setAddForm(f => ({ ...f, area_m2: e.target.value }))}
+              value={addForm.area}
+              onChange={e => setAddForm(f => ({ ...f, area: e.target.value }))}
               fullWidth
               helperText="Aproximado está bien — podés usar surcos × largo"
             />
 
-            {selectedCrop?.is_perennial ? (
+            {selectedCrop?.isPerennial ? (
               <TextField
                 select
                 label="¿En qué etapa está?"
-                value={addForm.current_stage}
-                onChange={e => setAddForm(f => ({ ...f, current_stage: e.target.value }))}
+                value={addForm.currentStage}
+                onChange={e => setAddForm(f => ({ ...f, currentStage: e.target.value }))}
                 fullWidth
               >
                 <MenuItem value="initial">Brotación / inicio</MenuItem>
@@ -294,13 +302,15 @@ export default function FarmDetail() {
               <TextField
                 label="Fecha de siembra"
                 type="date"
-                value={addForm.planting_date}
-                onChange={e => setAddForm(f => ({ ...f, planting_date: e.target.value }))}
+                value={addForm.plantingDate}
+                onChange={e => setAddForm(f => ({ ...f, plantingDate: e.target.value }))}
                 fullWidth
                 InputLabelProps={{ shrink: true }}
                 helperText="¿Cuándo lo plantaste?"
               />
             )}
+
+
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -308,7 +318,7 @@ export default function FarmDetail() {
           <Button
             variant="contained"
             onClick={handleAddCrop}
-            disabled={adding || !addForm.crop_id || !addForm.area_m2}
+            disabled={adding || !addForm.cropId || !addForm.area}
           >
             {adding ? <CircularProgress size={20} color="inherit" /> : 'Agregar'}
           </Button>
@@ -340,6 +350,14 @@ export default function FarmDetail() {
                 </CardContent>
               </Card>
             ))}
+            <TextField
+              label="Fecha para iniciar el riego"
+              type="date"
+              value={startDate}
+              onChange={e => setStartDate(e.target.value)}
+              fullWidth
+              helperText="Cuando quieres iniciar la simulacion?"
+            />
           </Box>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>

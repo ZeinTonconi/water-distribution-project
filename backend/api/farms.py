@@ -7,8 +7,7 @@ from models.farm_crop import FarmCrop
 from models.crop import Crop
 from core.deps import get_current_user
 from models.user import User
-from api.farms.models.farmCreate import FarmCreate
-from api.farms.models.farmUpdate import FarmUpdate
+from schemas.farm import FarmUpdate, FarmCreate
 
 router = APIRouter(prefix="/farms", tags=["farms"]) 
 
@@ -22,7 +21,7 @@ def create_farm(
         user_id=current_user.id,
         name=body.name,
         municipality_id=body.municipality_id,
-        tank_capacity_l=body.tank_capacity_l,
+        tank_capacity=body.tank_capacity,
     )
     db.add(farm)
     db.commit()
@@ -40,7 +39,7 @@ def get_my_farm(
             "id": farm.id,
             "name": farm.name,
             "municipality": farm.municipality,
-            "tank_capacity_l": farm.tank_capacity_l,
+            "tank_capacity": farm.tank_capacity,
             "active_crops_count": db.query(FarmCrop).filter(
                 FarmCrop.farm_id == farm.id,
                 FarmCrop.is_harvested == False
@@ -68,17 +67,17 @@ def get_farm(
         "id": farm.id,
         "name": farm.name,
         "municipality": farm.municipality,
-        "tank_capacity_l": farm.tank_capacity_l,
+        "tankCapacity": farm.tank_capacity,
         "crops": [
             {
                 "id": fc.id,
-                "crop_id": fc.crop_id,
-                "crop_name": fc.crop.name,
-                "area_m2": fc.area_m2,
-                "planting_date": fc.planting_date,
-                "current_stage": fc.current_stage,
-                "is_harvested": fc.is_harvested,
-                "is_perennial": fc.crop.is_perennial,
+                "cropId": fc.crop_id,
+                "cropName": fc.crop.name,
+                "area": fc.area_m2,
+                "plantingDate": fc.planting_date,
+                "currentStage": fc.current_stage,
+                "isHarvested": fc.is_harvested,
+                "isPerennial": fc.crop.is_perennial,
             }
             for fc in farm.farm_crops
             if not fc.is_harvested
@@ -126,8 +125,8 @@ def update_farm(
     ).first()
     if not farm:
         raise HTTPException(status_code=404, detail="Chacra no encontrada")
-    if body.tank_capacity_l is not None:
-        farm.tank_capacity_l = body.tank_capacity_l
+    if body.tank_capacity is not None:
+        farm.tank_capacity = body.tank_capacity
     if body.tank_current_pct is not None:
         farm.tank_current_pct = body.tank_current_pct
     if body.name is not None:

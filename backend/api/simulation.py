@@ -91,8 +91,8 @@ def simulate(
     )
 
     # 7. Tank level in liters
-    tank_capacity_l = farm.tank_capacity_l
-    tank_current_l = farm.tank_capacity_l * body.tank_current_cpt
+    tank_capacity = farm.tank_capacity
+    tank_current_l = farm.tank_capacity * body.tank_current_cpt
 
     # 8. Crop parameters
     drought_tolerance = [fc.crop.drought_tolerance for fc in active_crops]
@@ -100,14 +100,24 @@ def simulate(
     n_crops = len(active_crops)
 
     # 9. Run optimized simulation
+    # opt_result = run_optimized(
+    #     demand=demand,
+    #     tank_capacity=tank_capacity,
+    #     tank_current_l=tank_current_l,
+    #     weekly_rainfall_l=weekly_rainfall_l,
+    #     min_water=min_water,
+    #     drought_tolerance=drought_tolerance,
+    #     priority=body.priority,
+    #     n_crops=n_crops,
+    #     n_weeks=n_weeks
+    # )
+
     opt_result = run_optimized(
         demand=demand,
-        tank_capacity_l=tank_capacity_l,
+        tank_capacity=tank_capacity,
         tank_current_l=tank_current_l,
         weekly_rainfall_l=weekly_rainfall_l,
-        min_water=min_water,
         drought_tolerance=drought_tolerance,
-        priority=body.priority,
         n_crops=n_crops,
         n_weeks=n_weeks
     )
@@ -115,7 +125,7 @@ def simulate(
     # 10. Run naive simulation
     naive_result = run_naive(
         demand=demand,
-        tank_capacity_l=tank_capacity_l,
+        tank_capacity=tank_capacity,
         tank_current_l=tank_current_l,
         weekly_rainfall_l=weekly_rainfall_l,
         n_crops=n_crops,

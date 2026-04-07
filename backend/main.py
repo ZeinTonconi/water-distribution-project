@@ -3,13 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
 from sqlalchemy.orm import Session
 from database import get_db
+from schemas import CropsResponse
 import models
 
 Base.metadata.create_all(bind=engine)
 
-from api.auth import router as auth_router
-from api.farms.farms import router as farms_router
-from api.simulation import router as simulation_router
+from api import auth_router,farms_router, simulation_router, crops_router
 
 app = FastAPI(title="Water Distribution API")
 
@@ -23,6 +22,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(farms_router)
 app.include_router(simulation_router)
+app.include_router(crops_router)
 
 @app.get("/")
 def health():
@@ -31,7 +31,20 @@ def health():
 @app.get("/crops")
 def get_crops(db: Session = Depends(get_db)):
     from models.crop import Crop
-    return db.query(Crop).all()
+    crops = db.query(Crop).all()
+    return [
+        CropsResponse(
+            id=crop.id,
+            name=crop.name,
+            is_perennial=crop.is_perennial,
+            kc_initial=crop.kc_initial,
+            kc_mid=crop.kc_mid,
+            kc_late=crop.kc_late,
+            drought_tolerance=crop.drought_tolerance,
+            min_water=crop.min_water_mm_week,
+        )
+        for crop in crops
+    ]
 
 @app.get('/municipalities')
 def get_municipalities(db: Session = Depends(get_db)):

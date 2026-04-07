@@ -1,13 +1,13 @@
 export interface LoginResponse {
-  access_token: string
-  token_type: string
-  user_id: number
+  accessToken: string
+  tokenType: string
+  userId: number
   name: string
 }
 
 export interface RegisterResponse {
-  access_token: string
-  token_type: string
-  user_id: number
+  accessToken: string
+  tokenType: string
+  userId: number
   name: string
 }
