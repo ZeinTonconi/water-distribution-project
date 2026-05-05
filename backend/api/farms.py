@@ -8,6 +8,7 @@ from models.crop import Crop
 from core.deps import get_current_user
 from models.user import User
 from schemas.farm import FarmUpdate, FarmCreate
+from api.crops import _fc_response
 
 router = APIRouter(prefix="/farms", tags=["farms"]) 
 
@@ -22,11 +23,14 @@ def create_farm(
         name=body.name,
         municipality_id=body.municipality_id,
         tank_capacity=body.tank_capacity,
+        farm_width_m=body.farm_width_m,
+        farm_height_m=body.farm_height_m,
     )
     db.add(farm)
     db.commit()
     db.refresh(farm)
     return farm
+
 
 @router.get("/me")
 def get_my_farm(
@@ -40,13 +44,16 @@ def get_my_farm(
             "name": farm.name,
             "municipality": farm.municipality,
             "tank_capacity": farm.tank_capacity,
-            "active_crops_count": db.query(FarmCrop).filter(
+            "farm_width_m": farm.farm_width_m,
+            "farm_height_m": farm.farm_height_m,
+            "active_crops": db.query(FarmCrop).filter(
                 FarmCrop.farm_id == farm.id,
                 FarmCrop.is_harvested == False
             ).count()
         }
         for farm in farms
     ]
+
 
 @router.get("/{farm_id}")
 def get_farm(
@@ -56,7 +63,11 @@ def get_farm(
 ):
     farm = (
         db.query(Farm)
-        .options(joinedload(Farm.farm_crops).joinedload(FarmCrop.crop))
+        .options(
+            joinedload(Farm.farm_crops).joinedload(FarmCrop.crop),
+            joinedload(Farm.farm_crops).joinedload(FarmCrop.parcels),
+            joinedload(Farm.municipality)
+        )
         .filter(Farm.id == farm_id, Farm.user_id == current_user.id)
         .first()
     )
@@ -64,25 +75,14 @@ def get_farm(
         raise HTTPException(status_code=404, detail="Chacra no encontrada")
 
     return {
-        "id": farm.id,
-        "name": farm.name,
-        "municipality": farm.municipality,
-        "tankCapacity": farm.tank_capacity,
-        "crops": [
-            {
-                "id": fc.id,
-                "cropId": fc.crop_id,
-                "cropName": fc.crop.name,
-                "area": fc.area_m2,
-                "plantingDate": fc.planting_date,
-                "currentStage": fc.current_stage,
-                "isHarvested": fc.is_harvested,
-                "isPerennial": fc.crop.is_perennial,
-            }
-            for fc in farm.farm_crops
-            if not fc.is_harvested
-        ]
-    }
+    "id": farm.id,
+    "name": farm.name,
+    "municipality": farm.municipality,
+    "tank_capacity": farm.tank_capacity,
+    "farm_width_m": farm.farm_width_m,
+    "farm_height_m": farm.farm_height_m,
+    "crops": [_fc_response(fc) for fc in farm.farm_crops if not fc.is_harvested]
+}
 
 @router.get("/{farm_id}/simulations")
 def get_simulations(

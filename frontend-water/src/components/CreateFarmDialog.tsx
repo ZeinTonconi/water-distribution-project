@@ -10,6 +10,7 @@ import {
   MenuItem,
   Box,
   CircularProgress,
+  Typography,
 } from "@mui/material";
 import type { FarmSummary, Municipality } from "../types";
 import { createFarm } from "../services/farmService";
@@ -23,23 +24,27 @@ interface Props {
 }
 
 export interface FormValues {
-  name: string;
-  municipalityId: number;
-  tankCapacity: number;
+  name: string
+  municipalityId: number
+  tankCapacity: number
+  farmWidthM: number
+  farmHeightM: number
 }
 
 const validationSchema = Yup.object({
-  name: Yup.string()
-    .min(2, "El nombre es muy corto")
-    .required("El nombre es obligatorio"),
-  municipalityId: Yup.number()
-    .min(1, "Seleccioná un municipio")
-    .required("El municipio es obligatorio"),
+  name: Yup.string().min(2, 'El nombre es muy corto').required('El nombre es obligatorio'),
+  municipalityId: Yup.number().min(1, 'Seleccioná un municipio').required(),
   tankCapacity: Yup.number()
-    .min(5, "El tanque debe tener al menos 5 litros")
-    .max(100000, "Capacidad muy grande")
-    .required("La capacidad es obligatoria")
-});
+    .min(5, 'Mínimo 5 litros').max(100000, 'Capacidad muy grande')
+    .required('La capacidad es obligatoria'),
+  farmWidthM: Yup.number()
+    .min(1, 'Mínimo 1 metro').max(2000, 'Muy grande')
+    .required('El ancho es obligatorio'),
+  farmHeightM: Yup.number()
+    .min(1, 'Mínimo 1 metro').max(2000, 'Muy grande')
+    .required('El largo es obligatorio'),
+})
+
 
 export default function CreateFarmDialog({
   open,
@@ -51,9 +56,11 @@ export default function CreateFarmDialog({
 
   const formik = useFormik<FormValues>({
     initialValues: {
-      name: "",
+      name: '',
       municipalityId: 0,
       tankCapacity: 0,
+      farmWidthM: 0,
+      farmHeightM: 0,
     },
     validationSchema,
     onSubmit: async (values, { setSubmitting, resetForm }) => {
@@ -79,6 +86,8 @@ export default function CreateFarmDialog({
         municipality: muni!,
         tankCapacity: farm.tankCapacity,
         activeCrops: 0,
+        farmWidthM: farm.farmWidthM,
+        farmHeightM: farm.farmHeightM,
       },
     ]);
     navigate(`/farms/${farm.id}`);
@@ -150,19 +159,34 @@ export default function CreateFarmDialog({
             }
             fullWidth
           />
+          <Box display="flex" gap={1.5}>
+            <TextField
+              label="Ancho de la chacra (m)"
+              type="number"
+              placeholder="50"
+              {...formik.getFieldProps('farmWidthM')}
+              error={formik.touched.farmWidthM && Boolean(formik.errors.farmWidthM)}
+              helperText={formik.touched.farmWidthM && formik.errors.farmWidthM}
+              fullWidth
+            />
+            <TextField
+              label="Largo de la chacra (m)"
+              type="number"
+              placeholder="30"
+              {...formik.getFieldProps('farmHeightM')}
+              error={formik.touched.farmHeightM && Boolean(formik.errors.farmHeightM)}
+              helperText={formik.touched.farmHeightM && formik.errors.farmHeightM}
+              fullWidth
+            />
+          </Box>
 
-          {/* <TextField
-            select
-            label="¿Qué tan lleno está el tanque?"
-            {...formik.getFieldProps("tank_current_pct")}
-            fullWidth
-          >
-            <MenuItem value={1.0}>🟢 Lleno (100%)</MenuItem>
-            <MenuItem value={0.75}>🟡 Casi lleno (75%)</MenuItem>
-            <MenuItem value={0.5}>🟡 Medio (50%)</MenuItem>
-            <MenuItem value={0.25}>🟠 Poco (25%)</MenuItem>
-            <MenuItem value={0.1}>🔴 Casi vacío (10%)</MenuItem>
-          </TextField> */}
+          {formik.values.farmWidthM > 0 && formik.values.farmHeightM > 0 && (
+            <Box bgcolor="#e8f0fe" borderRadius={2} px={2} py={1.5} border="1px solid #c7d7f9">
+              <Typography variant="body2" fontWeight={600} color="primary.main">
+                Área total de la chacra: {(formik.values.farmWidthM * formik.values.farmHeightM).toFixed(0)} m²
+              </Typography>
+            </Box>
+          )}
         </Box>
       </DialogContent>
 
@@ -175,7 +199,7 @@ export default function CreateFarmDialog({
           form="create-farm-form"
           variant="contained"
           disabled={formik.isSubmitting || !formik.dirty}
-          onClick ={ () => {
+          onClick={() => {
             console.log(formik.errors)
           }}
         >

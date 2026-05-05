@@ -15,7 +15,7 @@ export default function WeeklySchedule({ weeks }: Props) {
   }
 
   const weeksWithDemand = weeks.filter(w =>
-    w.crops.some(c => c.demanded_l > 0)
+    w.crops.some(c => c.demandedL > 0)
   )
 
   if (weeksWithDemand.length === 0) {
@@ -35,9 +35,9 @@ export default function WeeklySchedule({ weeks }: Props) {
       {weeksWithDemand.map(week => {
         const date = new Date(week.date)
         const dateStr = date.toLocaleDateString('es-BO', { day: 'numeric', month: 'short' })
-        const activeCrops = week.crops.filter(c => c.demanded_l > 0)
-        const allGood = activeCrops.every(c => c.satisfaction_pct >= 90)
-        const someStressed = activeCrops.some(c => c.satisfaction_pct < 50)
+        const activeCrops = week.crops.filter(c => c.demandedL > 0)
+        const allGood = activeCrops.every(c => c.satisfactionPct >= 90)
+        const someStressed = activeCrops.some(c => c.satisfactionPct < 50)
 
         return (
           <Card
@@ -55,25 +55,25 @@ export default function WeeklySchedule({ weeks }: Props) {
                   Semana {week.week} · {dateStr}
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  💧 {Math.round(week.tank_level_l).toLocaleString('es-BO')} L en tanque
+                  💧 {Math.round(week.tankLevelL).toLocaleString('es-BO')} L en tanque 
                 </Typography>
               </Box>
 
               <Box display="flex" flexDirection="column" gap={0.75}>
                 {activeCrops.map(crop => {
-                  const pct = crop.satisfaction_pct
+                  const pct = crop.satisfactionPct
                   const color = pct >= 90 ? '#059669' : pct >= 50 ? '#d97706' : '#dc2626'
                   const bgColor = pct >= 90 ? '#d1fae5' : pct >= 50 ? '#fef3c7' : '#fef2f2'
 
                   return (
-                    <Box key={crop.farm_crop_id}>
+                    <Box key={crop.farmCropId}>
                       <Box display="flex" justifyContent="space-between" alignItems="center" mb={0.25}>
                         <Typography variant="caption" fontWeight={500}>
-                          {crop.crop_name}
+                          {crop.cropName}
                         </Typography>
                         <Box display="flex" alignItems="center" gap={0.75}>
                           <Typography variant="caption" color="text.secondary">
-                            {Math.round(crop.allocated_l).toLocaleString('es-BO')} L
+                            {Math.round(crop.allocatedL).toLocaleString('es-BO')} L
                           </Typography>
                           <Chip
                             label={`${pct}%`}

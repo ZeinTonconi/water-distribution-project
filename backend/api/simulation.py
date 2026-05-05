@@ -35,7 +35,10 @@ def simulate(
     farm = (
         db.query(Farm)
         .options(
-            joinedload(Farm.farm_crops).joinedload(FarmCrop.crop),
+            joinedload(Farm.farm_crops)
+                .joinedload(FarmCrop.crop),
+            joinedload(Farm.farm_crops)
+                .joinedload(FarmCrop.parcels),  # add this
             joinedload(Farm.municipality)
         )
         .filter(Farm.id == farm_id, Farm.user_id == current_user.id)
@@ -188,6 +191,7 @@ def simulate(
                         )
                     }
                     for i in range(n_crops)
+                    if demand[i][t] > 0
                 ]
             }
             weeks_data.append(week_entry)
@@ -207,11 +211,33 @@ def simulate(
         else:
             overall_pct = 100
 
+        harvest_weeks = {}
+        for i, fc in enumerate(active_crops):
+            if fc.crop.is_perennial:
+                continue
+            for t in range(n_weeks):
+                if demand[i][t] == 0 and t > 0 and demand[i][t-1] > 0:
+                    harvest_weeks[fc.id] = t + 1  # week number when cycle ends
+                    break
+
+        crop_info = []
+        for i, fc in enumerate(active_crops):
+            total_allocated = sum(result["allocation"][i][t] for t in range(n_weeks))
+            total_demanded = sum(demand[i][t] for t in range(n_weeks) if demand[i][t] > 0)
+            crop_info.append({
+                "farm_crop_id": fc.id,
+                "crop_name": fc.crop.name,
+                "is_perennial": fc.crop.is_perennial,
+                "satisfaction_pct": round(total_allocated / total_demanded * 100 if total_demanded > 0 else 100),
+                "harvest_week": harvest_weeks.get(fc.id),
+            })
+
         return {
             "simulation_id": sim.id,
             "type": sim_type,
             "status": result["status"],
             "overall_satisfaction_pct": overall_pct,
+            "crop_summary": crop_info,  # add this
             "weeks": weeks_data
         }
 

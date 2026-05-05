@@ -35,15 +35,15 @@ export default function Results() {
     }
     const weeks = opt.weeks
     const lastGoodWeek = [...weeks].reverse().find(w =>
-      w.crops.some(c => c.demanded_l > 0 && c.satisfaction_pct >= 80)
+      w.crops.some(c => c.demandedL > 0 && c.satisfactionPct >= 80)
     )
-    if (!lastGoodWeek) return 'El agua disponible es muy limitada para este período.'
 
-    const diff = opt.overall_satisfaction_pct - naive.overall_satisfaction_pct
+    const diff = opt.overallSatisfactionPct - naive.overallSatisfactionPct
     if (diff > 5) {
       return `Con el plan optimizado tus cultivos reciben ${diff}% más agua que repartiendo por igual.`
     }
-    return `Tu tanque cubre el riego hasta la semana ${lastGoodWeek.week} con buena eficiencia.`
+
+    return `Tu tanque cubre el riego hasta la semana ${lastGoodWeek!.week} con buena eficiencia.`
   }
 
   return (
@@ -68,11 +68,11 @@ export default function Results() {
             </Typography>
             <Box display="flex" gap={1} mt={1.5} flexWrap="wrap">
               <Chip
-                label={`Optimizado: ${opt.overall_satisfaction_pct}%`}
+                label={`Optimizado: ${opt.overallSatisfactionPct}%`}
                 color="primary" size="small"
               />
               <Chip
-                label={`Sin plan: ${naive.overall_satisfaction_pct}%`}
+                label={`Sin plan: ${naive.overallSatisfactionPct}%`}
                 variant="outlined" size="small"
               />
             </Box>
@@ -89,7 +89,7 @@ export default function Results() {
             naive={naive.weeks}
             tankCapacity={
               opt.weeks.length > 0
-                ? Math.max(...opt.weeks.map(w => w.tank_level_l)) * 1.1
+                ? Math.max(...opt.weeks.map(w => w.tankLevelL)) * 1.1
                 : 5000
             }
           />

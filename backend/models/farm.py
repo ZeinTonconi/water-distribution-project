@@ -11,6 +11,9 @@ class Farm(Base):
     municipality_id  = Column(Integer, ForeignKey("municipalities.id"), nullable=False)
     tank_capacity  = Column(Float, nullable=False)
 
+    farm_width_m  = Column(Float, nullable=False)
+    farm_height_m = Column(Float, nullable=False)
+
     user         = relationship("User", back_populates="farms")
     municipality = relationship("Municipality")
     farm_crops   = relationship("FarmCrop", back_populates="farm")

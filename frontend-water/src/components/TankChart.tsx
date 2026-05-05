@@ -3,6 +3,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts'
 import type { SimulationWeek } from '../types'
+import type { NameType, ValueType } from 'recharts/types/component/DefaultTooltipContent'
 
 interface Props {
   optimized: SimulationWeek[]
@@ -11,10 +12,11 @@ interface Props {
 }
 
 export default function TankChart({ optimized, naive, tankCapacity }: Props) {
+
   const data = optimized.map((w, i) => ({
     semana: `S${w.week}`,
-    optimizado: Math.round(w.tank_level_l),
-    naive: Math.round(naive[i]?.tank_level_l ?? 0),
+    optimizado: Math.round(w.tankLevelL),
+    naive: Math.round(naive[i]?.tankLevelL ?? 0),
   }))
 
   return (
@@ -31,8 +33,8 @@ export default function TankChart({ optimized, naive, tankCapacity }: Props) {
           tickFormatter={v => `${Math.round(v / 1000 * 10) / 10}k`}
         />
         <Tooltip
-          formatter={(value: number, name: string) => [
-            `${value.toLocaleString('es-BO')} L`,
+          formatter={(value: ValueType | undefined, name: NameType | undefined) => [
+            `${value?.toLocaleString('es-BO')} L`,
             name === 'optimizado' ? 'Con plan' : 'Sin plan'
           ]}
         />

@@ -1,26 +1,40 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import {
-  Box, Typography, Button, Card, CardContent, CircularProgress,
-  Alert, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, IconButton, Chip, Divider, Fab
+  Box, Typography, Button, CircularProgress,
+  Alert, Divider, IconButton, Tooltip
 } from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import AddIcon from '@mui/icons-material/Add'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
-import { getFarm, getCrops, addCrop, harvestCrop } from '../services/farmService'
-import type { Farm, Crop } from '../types'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteIcon from '@mui/icons-material/Delete'
+import RotateRightIcon from '@mui/icons-material/RotateRight'
+import { getFarm, getCrops, addCrop, updateCrop } from '../services/farmService'
+import { simulateFarm } from '../services/simulationService'
+import AppHeader from '../components/AppHeader'
+import { PageShell, PageContent } from '../components/PageWrapper'
+import FarmCanvas from '../components/FarmCanvas'
+import AddParcelDialog from '../components/AddParcelDialog'
+import SimulationResults from '../components/SimulationResults'
+import type { Farm, Crop, ParcelGroup, SimulationResponse } from '../types'
+import { CANVAS_H, CANVAS_W, getGroupArea, getScale, PADDING } from '../types'
+import type { ParcelGroupFormValues } from '../components/AddParcelDialog'
+import EditParcelDialog from '../components/EditParcelDialog'
+import type { EditParcelValues } from '../components/EditParcelDialog'
+import { v4 as uuidv4 } from 'uuid'
+
+// install uuid: npm install uuid && npm install -D @types/uuid
+
+const COLORS = ['#ef4444', '#a855f7', '#22c55e', '#f97316', '#84cc16', '#06b6d4', '#f59e0b']
 
 const PRIORITY_OPTIONS = [
-  { value: 'sensitive', label: '🌱 Proteger cultivos delicados', description: 'El agua va primero a los cultivos más sensibles a la sequía' },
-  { value: 'equal', label: '⚖️ Repartir igual entre todo', description: 'Todos los cultivos reciben agua por igual' },
-  { value: 'economic', label: '💰 Lo que más vale económicamente', description: 'Se prioriza la mayor producción posible' },
+  { value: 'sensitive', label: '🌱 Proteger cultivos delicados' },
+  { value: 'equal', label: '⚖️ Repartir igual' },
+  { value: 'economic', label: '💰 Maximizar producción' },
 ]
 
 export default function FarmDetail() {
   const { farmId } = useParams<{ farmId: string }>()
-  const navigate = useNavigate()
+  const [groups, setGroups] = useState<ParcelGroup[]>([])
   const id = Number(farmId)
 
   const [farm, setFarm] = useState<Farm | null>(null)
@@ -28,27 +42,71 @@ export default function FarmDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Add crop dialog
+  // Canvas state
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [addForm, setAddForm] = useState({
-    cropId: '',
-    area: '',
-    plantingDate: '',
-    currentStage: 'mid',
-    simulationDate: ''
-  })
 
-  // Priority + simulate dialog
-  const [simOpen, setSimOpen] = useState(false)
-  const [priority, setPriority] = useState('sensitive')
+  // Simulation state
+  const [priority, setPriority] = useState<'sensitive' | 'equal' | 'economic'>('sensitive')
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
   const [simulating, setSimulating] = useState(false)
+  const [result, setResult] = useState<SimulationResponse | null>(null)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<ParcelGroup | null>(null)
+
+  const handleEditOpen = (group: ParcelGroup) => {
+    setEditingGroup(group)
+    setEditOpen(true)
+  }
+
+  const handleEditSave = (id: string, values: EditParcelValues) => {
+    const crop = crops.find(c => c.id === Number(values.cropId))
+    setGroups(prev => prev.map(g =>
+      g.id === id
+        ? {
+          ...g,
+          cropId: Number(values.cropId),
+          cropName: crop?.name ?? null,
+          parcelCount: Number(values.parcelCount),
+          parcelWidth: Number(values.parcelWidth),
+          parcelLength: Number(values.parcelLength),
+          plantingDate: values.plantingDate || null,
+          currentStage: values.currentStage as any || null,
+        }
+        : g
+    ))
+  }
 
   const loadFarm = useCallback(async () => {
     try {
       const [farmData, cropsData] = await Promise.all([getFarm(id), getCrops()])
       setFarm(farmData)
       setCrops(cropsData)
+
+      // Convert FarmCrops from DB into canvas ParcelGroups
+      const loadedGroups: ParcelGroup[] = []
+      for (const fc of farmData.crops) {
+        for (const parcel of fc.parcels) {
+          loadedGroups.push({
+            id: `${fc.id}`,  // farmCropId — one group per FarmCrop for now
+            x: parcel.x,
+            y: parcel.y,
+            parcelCount: parcel.parcelCount,
+            parcelWidth: parcel.widthM,
+            parcelLength: parcel.lengthM,
+            rotation: parcel.rotation,
+            cropId: fc.cropId,
+            cropName: fc.cropName,
+            plantingDate: fc.plantingDate,
+            currentStage: fc.currentStage,
+          })
+        }
+      }
+      setGroups(loadedGroups)
+
+      const stored = sessionStorage.getItem(`sim_${id}`)
+      if (stored) setResult(JSON.parse(stored))
     } catch {
       setError('No se pudo cargar la chacra')
     } finally {
@@ -58,62 +116,149 @@ export default function FarmDetail() {
 
   useEffect(() => { loadFarm() }, [loadFarm])
 
-  const selectedCrop = crops.find(c => c.id === Number(addForm.cropId))
+  const handleAddGroup = async (values: ParcelGroupFormValues) => {
+    const crop = crops.find(c => c.id === Number(values.cropId))
+    const { scaleX: scale } = getScale(farm!.farmWidthM, farm!.farmHeightM)
+    const rectW = Number(values.parcelCount) * Number(values.parcelWidth) * scale
+    const rectH = Number(values.parcelLength) * scale
 
-  const handleAddCrop = async () => {
-    if (!addForm.cropId || !addForm.area) return
-    setAdding(true)
+    const farmCanvasW = farm!.farmWidthM * scale
+    const farmCanvasH = farm!.farmHeightM * scale
+    const farmOriginX = (CANVAS_W - farmCanvasW) / 2
+    const farmOriginY = (CANVAS_H - farmCanvasH) / 2
+
+    const halfW = rectW / 2
+    const halfH = rectH / 2
+    const col = groups.length % 3
+    const row = Math.floor(groups.length / 3)
+    const offsetX = col * Math.min(rectW + 16, (farmCanvasW - rectW) / 3)
+    const offsetY = row * Math.min(rectH + 16, (farmCanvasH - rectH) / 3)
+
+    const x = Math.min(farmOriginX + halfW + offsetX, farmOriginX + farmCanvasW - halfW)
+    const y = Math.min(farmOriginY + halfH + offsetY, farmOriginY + farmCanvasH - halfH)
+
     try {
-      await addCrop(id, {
-        crop_id: Number(addForm.cropId),
-        area_m2: Number(addForm.area),
-        planting_date: selectedCrop?.isPerennial ? null : addForm.plantingDate || null,
-        current_stage: selectedCrop?.isPerennial ? addForm.currentStage : null,
+      // Save to backend
+      const saved = await addCrop(id, {
+        cropId: Number(values.cropId),
+        plantingDate: crop?.isPerennial ? null : values.plantingDate || null,
+        currentStage: crop?.isPerennial ? values.currentStage : null,
+        parcels: [{
+          parcelCount: Number(values.parcelCount),
+          widthM: Number(values.parcelWidth),
+          lengthM: Number(values.parcelLength),
+          x,
+          y,
+          rotation: 0,
+        }]
       })
-      await loadFarm()
-      setAddOpen(false)
-      setAddForm({ cropId: '', area: '', plantingDate: '', currentStage: 'mid', simulationDate: '' })
+
+      // Add to canvas using DB id so we can update later
+      const newGroup: ParcelGroup = {
+        id: `${saved.id}`,  // use DB farmCropId as group id
+        x, y,
+        parcelCount: Number(values.parcelCount),
+        parcelWidth: Number(values.parcelWidth),
+        parcelLength: Number(values.parcelLength),
+        rotation: 0,
+        cropId: Number(values.cropId),
+        cropName: crop?.name ?? null,
+        plantingDate: values.plantingDate || null,
+        currentStage: values.currentStage as any || null,
+      }
+      setGroups(prev => [...prev, newGroup])
     } catch (err: any) {
       setError(err.message || 'Error al agregar cultivo')
-    } finally {
-      setAdding(false)
     }
   }
 
-  const handleHarvest = async (farmCropId: number) => {
-    try {
-      await harvestCrop(id, farmCropId)
-      await loadFarm()
-    } catch {
-      setError('Error al marcar como cosechado')
-    }
-  }
+  const handleMove = async (groupId: string, x: number, y: number) => {
+    setGroups(prev => prev.map(g => g.id === groupId ? { ...g, x, y } : g))
 
-  const [startDate, setStartDate] = useState("")
-  const handleSimulate = async () => {
-    setSimulating(true)
+    const group = groups.find(g => g.id === groupId)
+    if (!group) return
+
     try {
-      const { simulateFarm } = await import('../services/simulationService')
-      const result = await simulateFarm(id, {
-        priority: priority as 'sensitive' | 'equal' | 'economic',
-        n_weeks: 16,
-        start_date: new Date(startDate).toISOString().split('T')[0],
+      await updateCrop(id, Number(groupId), {
+        parcels: [{
+          parcelCount: group.parcelCount,
+          widthM: group.parcelWidth,
+          lengthM: group.parcelLength,
+          x,
+          y,
+          rotation: group.rotation,
+        }]
       })
-      // Store result in sessionStorage to pass to Results page
-      sessionStorage.setItem('simulationResult', JSON.stringify(result))
-      navigate(`/farms/${id}/results`)
+    } catch {
+      // silent — position will be wrong on next reload but not critical
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (!selectedId) return
+    try {
+      await updateCrop(id, Number(selectedId), { isHarvested: true })
+      setGroups(prev => prev.filter(g => g.id !== selectedId))
+      setSelectedId(null)
+    } catch (err: any) {
+      setError('Error al eliminar el cultivo')
+    }
+  }
+
+  const handleRotateSelected = async () => {
+    if (!selectedId) return
+    const group = groups.find(g => g.id === selectedId)
+    if (!group) return
+
+    const newRotation = group.rotation === 0 ? 90 : 0
+    setGroups(prev => prev.map(g =>
+      g.id === selectedId ? { ...g, rotation: newRotation } : g
+    ))
+
+    try {
+      await updateCrop(id, Number(selectedId), {
+        parcels: [{
+          parcelCount: group.parcelCount,
+          widthM: group.parcelWidth,
+          lengthM: group.parcelLength,
+          x: group.x,
+          y: group.y,
+          rotation: newRotation,
+        }]
+      })
+    } catch {
+      // silent
+    }
+  }
+
+  const handleSimulate = async () => {
+    if (groups.length === 0) return
+    setSimulating(true)
+    setError(null)
+    try {
+      const result = await simulateFarm(id, {
+        priority,
+        nWeeks: 16,
+        startDate,
+      })
+      setResult(result)
+      sessionStorage.setItem(`sim_${id}`, JSON.stringify(result))
     } catch (err: any) {
       setError(err.message || 'Error al calcular el plan')
+    } finally {
       setSimulating(false)
     }
   }
 
-  const toleranceLabel = (t: number) => {
-    if (t <= 1) return { label: 'Muy delicado', color: 'error' as const }
-    if (t <= 2) return { label: 'Delicado', color: 'warning' as const }
-    if (t <= 3) return { label: 'Moderado', color: 'info' as const }
-    return { label: 'Resistente', color: 'success' as const }
-  }
+  // Group parcels by crop for simulation summary
+  const cropSummary = groups.reduce((acc, g) => {
+    if (!g.cropId) return acc
+    const totalArea = getGroupArea(g)
+    if (!acc[g.cropId]) acc[g.cropId] = { name: g.cropName ?? '', area: 0, count: 0 }
+    acc[g.cropId].area += totalArea
+    acc[g.cropId].count += 1
+    return acc
+  }, {} as Record<number, { name: string; area: number; count: number }>)
 
   if (loading) return (
     <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
@@ -122,258 +267,181 @@ export default function FarmDetail() {
   )
 
   if (!farm) return (
-    <Box p={3}>
-      <Alert severity="error">Chacra no encontrada</Alert>
-    </Box>
+    <Box p={3}><Alert severity="error">Chacra no encontrada</Alert></Box>
   )
 
-  const activeCrops = farm.crops.filter(fc => !fc.isHarvested)
-
-  const toSpanish = (stage: string) => {
-    if(stage === "initial") return "de brote"
-    if(stage === "mid") return "de crecimiento"
-    if(stage === "end") return "de maduracion" 
-  }
-
-
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default', pb: 12 }}>
-      {/* Header */}
-      <Box sx={{ bgcolor: 'primary.main', color: 'white', px: 2, py: 2 }}>
-        <Box display="flex" alignItems="center" gap={1} mb={0.5}>
-          <IconButton color="inherit" size="small" onClick={() => navigate('/')}>
-            <ArrowBackIcon />
-          </IconButton>
-          <Typography variant="h6" fontWeight={700}>{farm.name}</Typography>
-        </Box>
-        <Typography variant="caption" sx={{ pl: 5 }}>
-          💧 Tanque: {farm.tankCapacity}L
-        </Typography>
-      </Box>
+    <PageShell>
+      <AppHeader
+        title={farm.name}
+        subtitle={`💧 Tanque: ${farm.tankCapacity}L`}
+        backTo="/"
+      />
 
-      <Box sx={{ px: 2, py: 3, maxWidth: 480, mx: 'auto' }}>
+      <PageContent maxWidth={900}>
         {error && (
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
             {error}
           </Alert>
         )}
 
-        {/* Active crops */}
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        {/* Canvas toolbar */}
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5}>
           <Typography variant="subtitle1" fontWeight={700}>
-            Mis cultivos ({activeCrops.length})
+            Mi chacra
           </Typography>
-          <Button
-            size="small" variant="outlined"
-            startIcon={<AddIcon />}
-            onClick={() => setAddOpen(true)}
-          >
-            Agregar
-          </Button>
+          <Box display="flex" gap={1}>
+            {selectedId && (
+              <>
+                <Tooltip title="Rotar 90°">
+                  <IconButton size="small" onClick={handleRotateSelected}>
+                    <RotateRightIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Eliminar parcela">
+                  <IconButton size="small" color="error" onClick={handleDeleteSelected}>
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AddIcon />}
+              onClick={() => setAddOpen(true)}
+            >
+              Agregar parcela
+            </Button>
+          </Box>
         </Box>
 
-        {activeCrops.length === 0 ? (
-          <Card elevation={0} sx={{ border: '1.5px dashed', borderColor: 'grey.300', mb: 3 }}>
-            <CardContent sx={{ textAlign: 'center', py: 4 }}>
-              <Typography color="text.secondary" mb={2}>
-                No tenés cultivos activos todavía
-              </Typography>
-              <Button variant="contained" onClick={() => setAddOpen(true)}>
-                Agregar primer cultivo
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Box display="flex" flexDirection="column" gap={1.5} mb={3}>
-            {activeCrops.map(fc => {
-              const cropInfo = crops.find(c => c.id === fc.cropId)
-              const tol = toleranceLabel(cropInfo?.droughtTolerance ?? 3)
-              return (
-                <Card key={fc.id} elevation={1}>
-                  <CardContent sx={{ py: '12px !important' }}>
-                    <Box display="flex" alignItems="flex-start" justifyContent="space-between">
-                      <Box flex={1}>
-                        <Typography fontWeight={600}>{fc.cropName}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {fc.area} m²
-                          {fc.plantingDate && ` · Plantado ${new Date(fc.plantingDate).toLocaleDateString('es-BO', { day: 'numeric', month: 'short' })}`}
-                          {fc.currentStage && ` · Etapa ${toSpanish(fc.currentStage)}`}
-                        </Typography>
-                        <Box mt={0.75}>
-                          <Chip
-                            label={tol.label}
-                            color={tol.color}
-                            size="small"
-                            sx={{ height: 20, fontSize: '0.7rem' }}
-                          />
-                          {fc.isPerennial && (
-                            <Chip
-                              label="Perenne"
-                              size="small"
-                              sx={{ height: 20, fontSize: '0.7rem', ml: 0.5 }}
-                            />
-                          )}
-                        </Box>
-                      </Box>
-                      <IconButton
-                        size="small"
-                        color="success"
-                        onClick={() => handleHarvest(fc.id)}
-                        title="Marcar como cosechado"
-                      >
-                        <CheckCircleIcon fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </Box>
-        )}
+        {/* Canvas */}
+        <FarmCanvas
+          groups={groups}
+          selectedId={selectedId}
+          farmWidthM={farm.farmWidthM}
+          farmHeightM={farm.farmHeightM}
+          onSelect={setSelectedId}
+          onMove={handleMove}
+          onEdit={handleEditOpen}
+        />
 
-        <Divider sx={{ mb: 3 }} />
-
-        {/* Simulate button */}
-        {activeCrops.length > 0 && (
-          <Button
-            variant="contained"
-            size="large"
-            fullWidth
-            startIcon={<PlayArrowIcon />}
-            onClick={() => setSimOpen(true)}
-          >
-            Calcular plan de riego
-          </Button>
-        )}
-      </Box>
-
-      {/* FAB for mobile */}
-      <Fab
-        color="primary"
-        size="medium"
-        sx={{ position: 'fixed', bottom: 24, right: 24 }}
-        onClick={() => setAddOpen(true)}
-      >
-        <AddIcon />
-      </Fab>
-
-      {/* Add crop dialog */}
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle fontWeight={700}>Agregar cultivo</DialogTitle>
-        <DialogContent>
-          <Box display="flex" flexDirection="column" gap={2} pt={1}>
-            <TextField
-              select
-              label="Cultivo"
-              value={addForm.cropId}
-              onChange={e => setAddForm(f => ({ ...f, cropId: e.target.value }))}
-              fullWidth
-            >
-              {crops.map(c => (
-                <MenuItem key={c.id} value={c.id}>
-                  {c.name} {c.isPerennial ? '(perenne)' : ''}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              label="Área (m²)"
-              type="number"
-              placeholder="30"
-              value={addForm.area}
-              onChange={e => setAddForm(f => ({ ...f, area: e.target.value }))}
-              fullWidth
-              helperText="Aproximado está bien — podés usar surcos × largo"
-            />
-
-            {selectedCrop?.isPerennial ? (
-              <TextField
-                select
-                label="¿En qué etapa está?"
-                value={addForm.currentStage}
-                onChange={e => setAddForm(f => ({ ...f, currentStage: e.target.value }))}
-                fullWidth
+        {/* Crop summary */}
+        {Object.keys(cropSummary).length > 0 && (
+          <Box display="flex" gap={1} flexWrap="wrap" mt={2}>
+            {Object.entries(cropSummary).map(([cropId, info]) => (
+              <Box
+                key={cropId}
+                bgcolor="grey.100"
+                borderRadius={2}
+                px={1.5} py={0.75}
               >
-                <MenuItem value="initial">Brotación / inicio</MenuItem>
-                <MenuItem value="mid">Crecimiento / producción</MenuItem>
-                <MenuItem value="late">Maduración / fin</MenuItem>
-              </TextField>
-            ) : (
-              <TextField
-                label="Fecha de siembra"
-                type="date"
-                value={addForm.plantingDate}
-                onChange={e => setAddForm(f => ({ ...f, plantingDate: e.target.value }))}
-                fullWidth
-                InputLabelProps={{ shrink: true }}
-                helperText="¿Cuándo lo plantaste?"
-              />
-            )}
-
-
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setAddOpen(false)}>Cancelar</Button>
-          <Button
-            variant="contained"
-            onClick={handleAddCrop}
-            disabled={adding || !addForm.cropId || !addForm.area}
-          >
-            {adding ? <CircularProgress size={20} color="inherit" /> : 'Agregar'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Priority + simulate dialog */}
-      <Dialog open={simOpen} onClose={() => !simulating && setSimOpen(false)} fullWidth maxWidth="xs">
-        <DialogTitle fontWeight={700}>¿Qué querés proteger?</DialogTitle>
-        <DialogContent>
-          <Box display="flex" flexDirection="column" gap={1.5} pt={1}>
-            {PRIORITY_OPTIONS.map(opt => (
-              <Card
-                key={opt.value}
-                elevation={0}
-                onClick={() => setPriority(opt.value)}
-                sx={{
-                  border: '2px solid',
-                  borderColor: priority === opt.value ? 'primary.main' : 'grey.200',
-                  borderRadius: 2,
-                  cursor: 'pointer',
-                  transition: 'border-color 0.15s',
-                  bgcolor: priority === opt.value ? 'primary.50' : 'white',
-                }}
-              >
-                <CardContent sx={{ py: '12px !important' }}>
-                  <Typography fontWeight={600} fontSize="0.95rem">{opt.label}</Typography>
-                  <Typography variant="caption" color="text.secondary">{opt.description}</Typography>
-                </CardContent>
-              </Card>
+                <Typography variant="caption" fontWeight={600}>
+                  {info.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {info.count} parcela{info.count > 1 ? 's' : ''} · {info.area.toFixed(1)}m²
+                </Typography>
+              </Box>
             ))}
-            <TextField
-              label="Fecha para iniciar el riego"
+          </Box>
+        )}
+
+        <Divider sx={{ my: 3 }} />
+
+        {/* Simulation controls */}
+        <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-end" mb={2}>
+          <Box>
+            <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
+              Prioridad
+            </Typography>
+            <Box display="flex" gap={1}>
+              {PRIORITY_OPTIONS.map(opt => (
+                <Button
+                  key={opt.value}
+                  size="small"
+                  variant={priority === opt.value ? 'contained' : 'outlined'}
+                  onClick={() => setPriority(opt.value as any)}
+                  sx={{ fontSize: '0.75rem' }}
+                >
+                  {opt.label}
+                </Button>
+              ))}
+            </Box>
+          </Box>
+
+          <Box>
+            <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
+              Fecha de inicio
+            </Typography>
+            <input
               type="date"
               value={startDate}
               onChange={e => setStartDate(e.target.value)}
-              fullWidth
-              helperText="Cuando quieres iniciar la simulacion?"
+              style={{
+                padding: '6px 10px',
+                borderRadius: 8,
+                border: '1.5px solid #e5e7eb',
+                fontSize: 14,
+                fontFamily: 'inherit',
+              }}
             />
           </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button onClick={() => setSimOpen(false)} disabled={simulating}>Cancelar</Button>
+
           <Button
             variant="contained"
+            size="large"
+            startIcon={simulating ? <CircularProgress size={18} color="inherit" /> : <PlayArrowIcon />}
             onClick={handleSimulate}
-            disabled={simulating}
+            disabled={simulating || groups.length === 0}
           >
-            {simulating
-              ? <><CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />Calculando...</>
-              : 'Calcular'
-            }
+            {simulating ? 'Calculando...' : 'Calcular plan de riego'}
           </Button>
-        </DialogActions>
-      </Dialog>
-    </Box>
+        </Box>
+
+        {/* Results */}
+        {result && <SimulationResults result={result} />}
+      </PageContent>
+
+      <AddParcelDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        crops={crops}
+        onAdd={handleAddGroup}
+      />
+      <EditParcelDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        crops={crops}
+        group={editingGroup}
+        onSave={handleEditSave}
+      />
+      {Object.keys(cropSummary).length > 0 && (
+        <Box display="flex" gap={1} flexWrap="wrap" mt={2}>
+          {Object.entries(cropSummary).map(([cropId, info]) => {
+            const totalFarmArea = farm!.farmWidthM * farm!.farmHeightM
+            const overFarm = info.area > totalFarmArea
+            return (
+              <Box
+                key={cropId}
+                bgcolor={overFarm ? '#fef2f2' : 'grey.100'}
+                border={overFarm ? '1px solid #fca5a5' : 'none'}
+                borderRadius={2}
+                px={1.5} py={0.75}
+              >
+                <Typography variant="caption" fontWeight={600} color={overFarm ? 'error.main' : 'text.primary'}>
+                  {info.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {info.count} grupo{info.count > 1 ? 's' : ''} · {info.area.toFixed(1)}m²
+                  {overFarm && ' ⚠️ supera el área de la chacra'}
+                </Typography>
+              </Box>
+            )
+          })}
+        </Box>
+      )}
+    </PageShell>
   )
 }

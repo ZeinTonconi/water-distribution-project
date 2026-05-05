@@ -7,10 +7,59 @@ from models.farm import Farm
 from models.crop import Crop
 from models.farm_crop import FarmCrop
 from schemas.farm_crop import FarmCropCreate, FarmCropUpdate
+from pydantic import BaseModel
+from datetime import date
+from models.parcel import Parcel
 
 router = APIRouter(prefix="/farms", tags=["farms"]) 
 
-@router.post("/{farm_id}/crops", status_code=status.HTTP_201_CREATED)
+class ParcelIn(BaseModel):
+    parcel_count: int
+    width_m: float
+    length_m: float
+    x: float = 0
+    y: float = 0
+    rotation: int = 0
+
+class FarmCropCreate(BaseModel):
+    crop_id: int
+    planting_date: date | None = None
+    current_stage: str | None = None
+    parcels: list[ParcelIn]
+
+class FarmCropUpdate(BaseModel):
+    planting_date: date | None = None
+    current_stage: str | None = None
+    is_harvested: bool | None = None
+    parcels: list[ParcelIn] | None = None
+
+
+def _fc_response(fc: FarmCrop) -> dict:
+    area_m2 = sum(p.parcel_count * p.width_m * p.length_m for p in fc.parcels)
+    return {
+        "id": fc.id,
+        "crop_id": fc.crop_id,
+        "crop_name": fc.crop.name,
+        "planting_date": fc.planting_date,
+        "current_stage": fc.current_stage,
+        "is_harvested": fc.is_harvested,
+        "is_perennial": fc.crop.is_perennial,
+        "area_m2": area_m2,
+        "parcels": [
+            {
+                "id": p.id,
+                "parcel_count": p.parcel_count,
+                "width_m": p.width_m,
+                "length_m": p.length_m,
+                "x": p.x,
+                "y": p.y,
+                "rotation": p.rotation,
+            }
+            for p in fc.parcels
+        ]
+    }
+
+@router.post("/{farm_id}/crops", status_code=201)
 def add_crop(
     farm_id: int,
     body: FarmCropCreate,
@@ -18,39 +67,35 @@ def add_crop(
     db: Session = Depends(get_db)
 ):
     farm = db.query(Farm).filter(
-        Farm.id == farm_id,
-        Farm.user_id == current_user.id
+        Farm.id == farm_id, Farm.user_id == current_user.id
     ).first()
     if not farm:
         raise HTTPException(status_code=404, detail="Chacra no encontrada")
 
-    crop = db.query(Crop).filter(Crop.id == body.crop_id).first()
-    if not crop:
-        raise HTTPException(status_code=404, detail="Cultivo no encontrado")
-
-    if crop.is_perennial and not body.current_stage:
-        raise HTTPException(
-            status_code=400,
-            detail="Los cultivos perennes necesitan una etapa actual"
-        )
-    if not crop.is_perennial and not body.planting_date:
-        raise HTTPException(
-            status_code=400,
-            detail="Los cultivos anuales necesitan una fecha de siembra"
-        )
-
-    farm_crop = FarmCrop(
-        farm_id=farm.id,
+    fc = FarmCrop(
+        farm_id=farm_id,
         crop_id=body.crop_id,
-        area_m2=body.area_m2,
         planting_date=body.planting_date,
         current_stage=body.current_stage,
+        is_harvested=False,
     )
-    db.add(farm_crop)
-    db.commit()
-    db.refresh(farm_crop)
-    return farm_crop
+    db.add(fc)
+    db.flush()
 
+    for p in body.parcels:
+        db.add(Parcel(
+            farm_crop_id=fc.id,
+            parcel_count=p.parcel_count,
+            width_m=p.width_m,
+            length_m=p.length_m,
+            x=p.x,
+            y=p.y,
+            rotation=p.rotation,
+        ))
+
+    db.commit()
+    db.refresh(fc)
+    return _fc_response(fc)
 
 @router.patch("/{farm_id}/crops/{farm_crop_id}")
 def update_crop(
@@ -61,28 +106,40 @@ def update_crop(
     db: Session = Depends(get_db)
 ):
     farm = db.query(Farm).filter(
-        Farm.id == farm_id,
-        Farm.user_id == current_user.id
+        Farm.id == farm_id, Farm.user_id == current_user.id
     ).first()
     if not farm:
         raise HTTPException(status_code=404, detail="Chacra no encontrada")
 
-    farm_crop = db.query(FarmCrop).filter(
-        FarmCrop.id == farm_crop_id,
-        FarmCrop.farm_id == farm.id
+    fc = db.query(FarmCrop).filter(
+        FarmCrop.id == farm_crop_id, FarmCrop.farm_id == farm_id
     ).first()
-    if not farm_crop:
+    if not fc:
         raise HTTPException(status_code=404, detail="Cultivo no encontrado")
 
-    if body.area_m2 is not None:
-        farm_crop.area_m2 = body.area_m2
     if body.planting_date is not None:
-        farm_crop.planting_date = body.planting_date
+        fc.planting_date = body.planting_date
     if body.current_stage is not None:
-        farm_crop.current_stage = body.current_stage
+        fc.current_stage = body.current_stage
     if body.is_harvested is not None:
-        farm_crop.is_harvested = body.is_harvested
+        fc.is_harvested = body.is_harvested
+
+    # Replace parcels if provided
+    if body.parcels is not None:
+        for old in fc.parcels:
+            db.delete(old)
+        db.flush()
+        for p in body.parcels:
+            db.add(Parcel(
+                farm_crop_id=fc.id,
+                parcel_count=p.parcel_count,
+                width_m=p.width_m,
+                length_m=p.length_m,
+                x=p.x,
+                y=p.y,
+                rotation=p.rotation,
+            ))
 
     db.commit()
-    db.refresh(farm_crop)
-    return farm_crop
+    db.refresh(fc)
+    return _fc_response(fc)
