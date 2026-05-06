@@ -17,6 +17,7 @@ import AppHeader from "../components/AppHeader";
 import { PageShell, PageContent } from "../components/PageWrapper";
 import CreateFarmDialog from "../components/CreateFarmDialog";
 import { CardFarmSummary } from "../components/CardFarmSummary";
+import EditFarmDialog from "../components/EditFarmDialog";
 
 export default function FarmList() {
 
@@ -27,6 +28,12 @@ export default function FarmList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+
+  const [editFarm, setEditFarm] = useState<FarmSummary | null>(null)
+
+  const handleFarmSaved = (updated: FarmSummary) => {
+    setFarms(prev => prev.map(f => f.id === updated.id ? updated : f))
+  }
 
   useEffect(() => {
     Promise.all([getFarms(), getMunicipalities()])
@@ -85,7 +92,7 @@ export default function FarmList() {
         ) : (
           <Box display="flex" flexDirection="column" gap={2}>
             {farms.map((farm) => (
-              <CardFarmSummary farm={farm} />
+              <CardFarmSummary farm={farm} key={farm.id} onEdit={setEditFarm} />
             ))}
           </Box>
         )}
@@ -106,6 +113,12 @@ export default function FarmList() {
         onClose={() => setDialogOpen(false)}
         municipalities={municipalities}
         setFarms={setFarms}
+      />
+      <EditFarmDialog
+        open={Boolean(editFarm)}
+        onClose={() => setEditFarm(null)}
+        farm={editFarm}
+        onSaved={handleFarmSaved}
       />
     </PageShell>
   );

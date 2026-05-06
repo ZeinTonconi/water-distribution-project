@@ -21,7 +21,7 @@ class SimulateRequest(BaseModel):
     priority: Priority
     n_weeks: int = 16
     start_date: date = None
-    tank_current_cpt: float = 1.0
+    tank_current_pct: float = 1.0
 
 
 @router.post("/{farm_id}/simulate")
@@ -95,7 +95,7 @@ def simulate(
 
     # 7. Tank level in liters
     tank_capacity = farm.tank_capacity
-    tank_current_l = farm.tank_capacity * body.tank_current_cpt
+    tank_current_l = farm.tank_capacity * body.tank_current_pct
 
     # 8. Crop parameters
     drought_tolerance = [fc.crop.drought_tolerance for fc in active_crops]
@@ -140,7 +140,11 @@ def simulate(
         sim = Simulation(
             farm_id=farm.id,
             simulation_type=sim_type,
-            priority=priority
+            priority=priority,
+            start_date=start_date,
+            tank_current_pct=body.tank_current_pct,
+            tank_current_l=tank_current_l,
+            n_weeks=n_weeks,
         )
         db.add(sim)
         db.flush()  # get sim.id without committing

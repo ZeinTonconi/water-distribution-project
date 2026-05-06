@@ -7,6 +7,7 @@ export const simulateFarm = async (
     priority: 'sensitive' | 'equal' | 'economic'
     nWeeks: number
     startDate: string
+    tankCurrentPct: number
   }
 ): Promise<SimulationResponse> => {
   const response = await apiClient.post<SimulationResponse>(

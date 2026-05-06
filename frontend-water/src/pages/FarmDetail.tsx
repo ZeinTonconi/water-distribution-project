@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Box, Typography, Button, CircularProgress,
-  Alert, Divider, IconButton, Tooltip
+  Alert, Divider, IconButton, Tooltip,
+  Slider
 } from '@mui/material'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import RotateRightIcon from '@mui/icons-material/RotateRight'
-import { getFarm, getCrops, addCrop, updateCrop } from '../services/farmService'
+import { getFarm, getCrops, addCrop, updateCrop, getLatestSimulation } from '../services/farmService'
 import { simulateFarm } from '../services/simulationService'
 import AppHeader from '../components/AppHeader'
 import { PageShell, PageContent } from '../components/PageWrapper'
@@ -20,7 +21,6 @@ import { CANVAS_H, CANVAS_W, getGroupArea, getScale, PADDING } from '../types'
 import type { ParcelGroupFormValues } from '../components/AddParcelDialog'
 import EditParcelDialog from '../components/EditParcelDialog'
 import type { EditParcelValues } from '../components/EditParcelDialog'
-import { v4 as uuidv4 } from 'uuid'
 
 // install uuid: npm install uuid && npm install -D @types/uuid
 
@@ -31,6 +31,8 @@ const PRIORITY_OPTIONS = [
   { value: 'equal', label: '⚖️ Repartir igual' },
   { value: 'economic', label: '💰 Maximizar producción' },
 ]
+
+
 
 export default function FarmDetail() {
   const { farmId } = useParams<{ farmId: string }>()
@@ -54,6 +56,8 @@ export default function FarmDetail() {
 
   const [editOpen, setEditOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<ParcelGroup | null>(null)
+
+  const [tankPct, setTankPct] = useState<number>(0.7)
 
   const handleEditOpen = (group: ParcelGroup) => {
     setEditingGroup(group)
@@ -80,9 +84,20 @@ export default function FarmDetail() {
 
   const loadFarm = useCallback(async () => {
     try {
-      const [farmData, cropsData] = await Promise.all([getFarm(id), getCrops()])
+      const [farmData, cropsData, latestSim] = await Promise.all([
+        getFarm(id),
+        getCrops(),
+        getLatestSimulation(id)
+      ])
       setFarm(farmData)
       setCrops(cropsData)
+
+      if (latestSim?.optimized) {
+        setResult(latestSim)
+        if (latestSim.meta?.tankCurrentPct) {
+          setTankPct(latestSim.meta.tankCurrentPct)
+        }
+      }
 
       // Convert FarmCrops from DB into canvas ParcelGroups
       const loadedGroups: ParcelGroup[] = []
@@ -240,6 +255,7 @@ export default function FarmDetail() {
         priority,
         nWeeks: 16,
         startDate,
+        tankCurrentPct: tankPct,
       })
       setResult(result)
       sessionStorage.setItem(`sim_${id}`, JSON.stringify(result))
@@ -350,6 +366,20 @@ export default function FarmDetail() {
 
         <Divider sx={{ my: 3 }} />
 
+        {result?.optimized && (
+          <Box mb={1.5}>
+            <Typography variant="caption" color="text.secondary">
+              Última simulación: {new Date(result.optimized.createdAt).toLocaleDateString('es-BO', {
+                day: 'numeric', month: 'long', year: 'numeric'
+              })} · Tanque al {Math.round((result.meta?.tankCurrentPct ?? 0) * 100)}%
+              ({Math.round(result.meta?.tankCurrentL ?? 0).toLocaleString('es-BO')}L) ·
+              Inicio {new Date(result.meta?.startDate).toLocaleDateString('es-BO', {
+                day: 'numeric', month: 'short'
+              })}
+            </Typography>
+          </Box>
+        )}
+
         {/* Simulation controls */}
         <Box display="flex" gap={2} flexWrap="wrap" alignItems="flex-end" mb={2}>
           <Box>
@@ -369,6 +399,32 @@ export default function FarmDetail() {
                 </Button>
               ))}
             </Box>
+          </Box>
+
+          <Box>
+            <Typography variant="caption" fontWeight={600} display="block" mb={0.5}>
+              Nivel del tanque ahora
+            </Typography>
+            <Box display="flex" alignItems="center" gap={2} minWidth={200}>
+              <Slider
+                value={tankPct}
+                onChange={(_, v) => setTankPct(v as number)}
+                min={0}
+                max={1}
+                step={0.05}
+                sx={{ flex: 1 }}
+              />
+              <Typography variant="caption" fontWeight={700} minWidth={36}>
+                {Math.round(tankPct * 100)}%
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="text.secondary">
+              {tankPct >= 0.8 ? '🟢 Lleno'
+                : tankPct >= 0.5 ? '🟡 Medio'
+                  : tankPct >= 0.2 ? '🟠 Poco'
+                    : '🔴 Casi vacío'}
+              {' '}— {Math.round(farm!.tankCapacity * tankPct).toLocaleString('es-BO')} L disponibles
+            </Typography>
           </Box>
 
           <Box>

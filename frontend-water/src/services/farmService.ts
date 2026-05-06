@@ -1,5 +1,5 @@
 import apiClient from "./apiInstance"
-import type { Farm, FarmSummary, FarmCrop, Crop, Municipality } from "../types"
+import type { Farm, FarmSummary, FarmCrop, Crop, Municipality, SimulationResponse } from "../types"
 
 export interface ParcelIn {
   parcelCount: number
@@ -77,4 +77,15 @@ export const harvestCrop = async (farmId: number, farmCropId: number): Promise<F
     isHarvested: true
   })
   return response.data
+}
+
+export const getLatestSimulation = async (
+  farmId: number
+): Promise<SimulationResponse | null> => {
+  try {
+    const response = await apiClient.get(`/farms/${farmId}/simulations/latest`)
+    return response.data
+  } catch {
+    return null
+  }
 }

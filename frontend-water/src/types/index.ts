@@ -49,17 +49,13 @@ export interface FarmSummary {
   name: string
   municipality: Municipality
   tankCapacity: number
+  tankCurrentPct: number
   farmWidthM: number
   farmHeightM: number
   activeCrops: number
 }
 
 export type Priority = 'sensitive' | 'equal' | 'economic'
-
-export interface SimulationResponse {
-  optimized: SimulationResult
-  naive: SimulationResult
-}
 
 export interface Parcel {
   id: number
@@ -136,11 +132,30 @@ export interface CropSummary {
 }
 
 
+export interface SimulationMeta {
+  startDate: string
+  tankCurrentPct: number
+  tankCurrentL: number
+  nWeeks: number
+  createdAt: string
+}
+
 export interface SimulationResult {
   simulationId: number
   type: string
   status: string
   overallSatisfactionPct: number
   cropSummary: CropSummary[]
+  startDate: string
+  tankCurrentPct: number
+  tankCurrentL: number
+  nWeeks: number
+  createdAt: string
   weeks: SimulationWeek[]
+}
+
+export interface SimulationResponse {
+  optimized: SimulationResult
+  naive: SimulationResult
+  meta: SimulationMeta
 }
